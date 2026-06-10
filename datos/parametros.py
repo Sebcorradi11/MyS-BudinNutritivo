@@ -57,9 +57,10 @@ TIEMPOS = {
 # CAPACIDAD PRODUCTIVA
 # ─────────────────────────────────────────
 CAPACIDAD = {
-    "budines_por_lote": 4,
+    "budines_por_lote": 2,        # budines que salen por hornada
+    "porciones_por_budin": 10,    # porciones por budín (dato real de nutrición)
     "hornos_disponibles": 1,
-    "moldes_disponibles": 4,
+    "moldes_disponibles": 2,
     "operarios": 2,
     "jornada_horas": 8,
 }
