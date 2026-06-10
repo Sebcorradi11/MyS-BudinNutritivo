@@ -108,10 +108,10 @@ def escenarios_stock() -> dict:
         "optimista": {
             "nombre": "🟢 Optimista",
             "comensales_esperados": 60,
-            "pct_consumo_min": 0.85,
-            "pct_consumo_max": 1.0,
-            "lotes_preparados": 4,
-            "descripcion": "Alta asistencia, alto consumo, stock generoso.",
+            "pct_consumo_min": 0.60,
+            "pct_consumo_max": 0.75,
+            "lotes_preparados": 3,
+            "descripcion": "Demanda moderada con preparación estándar. Stock de sobra, sin quiebre.",
         },
         "esperado": {
             "nombre": "🟡 Esperado",
@@ -119,15 +119,15 @@ def escenarios_stock() -> dict:
             "pct_consumo_min": 0.70,
             "pct_consumo_max": 0.90,
             "lotes_preparados": 3,
-            "descripcion": "Asistencia y consumo probables según el evento.",
+            "descripcion": "Demanda probable del evento. Balance entre quiebre y desperdicio.",
         },
         "pesimista": {
             "nombre": "🔴 Pesimista",
             "comensales_esperados": 60,
-            "pct_consumo_min": 0.50,
-            "pct_consumo_max": 0.70,
+            "pct_consumo_min": 0.85,
+            "pct_consumo_max": 1.0,
             "lotes_preparados": 2,
-            "descripcion": "Baja asistencia, bajo consumo, stock ajustado.",
+            "descripcion": "Alta demanda con poca preparación. Riesgo alto de quedarse sin stock.",
         },
     }
 
