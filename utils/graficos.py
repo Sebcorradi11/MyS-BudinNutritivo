@@ -297,6 +297,73 @@ def grafico_gantt(df_lotes: pd.DataFrame, max_lotes: int = 10) -> go.Figure:
 
 
 # ─────────────────────────────────────────
+# GANTT DE SIMULACIÓN DE LÍNEA
+# ─────────────────────────────────────────
+COLORES_ETAPAS_GANTT = {
+    "Preparación":      "#3498DB",
+    "Cocción lentejas": "#E67E22",
+    "Mezclado":         "#2ECC71",
+    "Horneado":         "#E74C3C",
+    "Enfriado":         "#9B59B6",
+    "Envasado":         "#1ABC9C",
+}
+
+def grafico_gantt_produccion(df: pd.DataFrame) -> go.Figure:
+    """
+    Gantt interactivo de la simulación de línea de producción.
+    df debe tener columnas: Lote, Etapa, Inicio, Fin, Duración, Espera horno (min).
+    """
+    ref = pd.Timestamp("2000-01-01")
+    df = df.copy()
+    df["Start"] = df["Inicio"].apply(lambda x: ref + pd.Timedelta(minutes=x))
+    df["Finish"] = df["Fin"].apply(lambda x: ref + pd.Timedelta(minutes=x))
+    df["hover"] = df.apply(
+        lambda r: (
+            f"<b>{r['Etapa']}</b><br>"
+            f"Inicio: {r['Inicio']:.1f} min<br>"
+            f"Fin: {r['Fin']:.1f} min<br>"
+            f"Duración: {r['Duración']:.1f} min"
+            + (f"<br>Espera en horno: {r['Espera horno (min)']:.1f} min" if r["Espera horno (min)"] > 0 else "")
+        ),
+        axis=1,
+    )
+
+    fig = px.timeline(
+        df,
+        x_start="Start",
+        x_end="Finish",
+        y="Lote",
+        color="Etapa",
+        color_discrete_map=COLORES_ETAPAS_GANTT,
+        custom_data=["hover"],
+    )
+
+    fig.update_traces(hovertemplate="%{customdata[0]}<extra></extra>")
+
+    # Convertir etiquetas del eje X a minutos reales
+    min_t = df["Inicio"].min()
+    max_t = df["Fin"].max()
+    tick_step = max(10, int((max_t - min_t) / 10 / 10) * 10)
+    tick_vals_min = list(range(0, int(max_t) + tick_step, tick_step))
+    tick_vals_dt = [ref + pd.Timedelta(minutes=m) for m in tick_vals_min]
+
+    fig.update_xaxes(
+        tickvals=tick_vals_dt,
+        ticktext=[f"{m} min" for m in tick_vals_min],
+        title="Tiempo desde inicio (min)",
+    )
+    fig.update_yaxes(autorange="reversed", title="")
+    fig.update_layout(
+        title="Diagrama de Gantt — Simulación de la línea de producción",
+        height=max(300, 80 + df["Lote"].nunique() * 40),
+        margin=dict(l=20, r=20, t=50, b=40),
+        plot_bgcolor=COLORES["fondo"],
+        legend_title="Etapa",
+    )
+    return fig
+
+
+# ─────────────────────────────────────────
 # DIAGRAMA DE FLUJO DEL PROCESO PRODUCTIVO
 # ─────────────────────────────────────────
 def grafico_flujo_produccion(etapas: list[dict]) -> go.Figure:
