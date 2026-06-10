@@ -5,7 +5,7 @@
 
 import numpy as np
 import pandas as pd
-from datos.parametros import EVENTO, CAPACIDAD, SEMILLA
+from datos.parametros import SEMILLA
 
 # ─────────────────────────────────────────
 # FUNCIÓN PRINCIPAL
@@ -15,6 +15,7 @@ def simular_stock(
     pct_consumo_min: float,
     pct_consumo_max: float,
     budines_por_lote: int,
+    porciones_por_budin: int,
     lotes_preparados: int,
     iteraciones: int = 1000,
     semilla: int = SEMILLA,
@@ -27,13 +28,15 @@ def simular_stock(
         2. Se sortea qué porcentaje de ellos consume el budín
         3. Se calcula si hay quiebre de stock o desperdicio
 
+    Cada lote produce: budines_por_lote × porciones_por_budin porciones.
+
     Retorna:
         - df: DataFrame con el resultado de cada iteración
         - metricas: dict con los indicadores principales
     """
     np.random.seed(semilla)
 
-    total_porciones = lotes_preparados * budines_por_lote
+    total_porciones = lotes_preparados * budines_por_lote * porciones_por_budin
     resultados = []
 
     for i in range(iteraciones):
@@ -85,9 +88,9 @@ def simular_stock(
         "desperdicio_promedio": round(df["Desperdicio (porciones)"].mean(), 1),
         "porciones_recomendadas": int(df["Demanda (porciones)"].quantile(0.90)),
         "lotes_recomendados": int(
-            np.ceil(df["Demanda (porciones)"].quantile(0.90) / budines_por_lote)
+            np.ceil(df["Demanda (porciones)"].quantile(0.90) / (budines_por_lote * porciones_por_budin))
         ),
-        "recomendacion": _recomendacion_stock(prob_quiebre, lotes_preparados, budines_por_lote),
+        "recomendacion": _recomendacion_stock(prob_quiebre, lotes_preparados, budines_por_lote, porciones_por_budin),
     }
 
     return df, metricas
@@ -107,7 +110,7 @@ def escenarios_stock() -> dict:
             "comensales_esperados": 60,
             "pct_consumo_min": 0.85,
             "pct_consumo_max": 1.0,
-            "lotes_preparados": 20,
+            "lotes_preparados": 4,
             "descripcion": "Alta asistencia, alto consumo, stock generoso.",
         },
         "esperado": {
@@ -115,7 +118,7 @@ def escenarios_stock() -> dict:
             "comensales_esperados": 60,
             "pct_consumo_min": 0.70,
             "pct_consumo_max": 0.90,
-            "lotes_preparados": 15,
+            "lotes_preparados": 3,
             "descripcion": "Asistencia y consumo probables según el evento.",
         },
         "pesimista": {
@@ -123,7 +126,7 @@ def escenarios_stock() -> dict:
             "comensales_esperados": 60,
             "pct_consumo_min": 0.50,
             "pct_consumo_max": 0.70,
-            "lotes_preparados": 10,
+            "lotes_preparados": 2,
             "descripcion": "Baja asistencia, bajo consumo, stock ajustado.",
         },
     }
@@ -169,22 +172,24 @@ def _recomendacion_stock(
     prob_quiebre: float,
     lotes_preparados: int,
     budines_por_lote: int,
+    porciones_por_budin: int = 10,
 ) -> str:
+    ppp = budines_por_lote * porciones_por_budin
     if prob_quiebre > 30:
         return (
             f"Probabilidad de quiebre alta ({prob_quiebre:.1f}%). "
             f"Se recomienda preparar al menos {lotes_preparados + 3} lotes "
-            f"({(lotes_preparados + 3) * budines_por_lote} porciones)."
+            f"({(lotes_preparados + 3) * ppp} porciones)."
         )
     elif prob_quiebre > 10:
         return (
             f"Probabilidad de quiebre moderada ({prob_quiebre:.1f}%). "
             f"Se recomienda preparar {lotes_preparados + 1} lotes como margen de seguridad "
-            f"({(lotes_preparados + 1) * budines_por_lote} porciones)."
+            f"({(lotes_preparados + 1) * ppp} porciones)."
         )
     else:
         return (
             f"Probabilidad de quiebre baja ({prob_quiebre:.1f}%). "
             f"Los {lotes_preparados} lotes planificados "
-            f"({lotes_preparados * budines_por_lote} porciones) son suficientes."
+            f"({lotes_preparados * ppp} porciones) son suficientes."
         )
