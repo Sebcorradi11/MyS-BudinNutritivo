@@ -46,12 +46,12 @@ def generar_informe(
 # ─────────────────────────────────────────
 
 def _encabezado(fecha: str) -> str:
-    return f"""# Informe de Simulación — Budín Nutritivo
+    return f"""# Informe de Simulación — Nutridin
 
-**Universidad de la Cuenca del Plata · ISI 4to Año · Grupo 3 · 2026**
-**Modelos y Simulación / Ingeniería de Software III**
+**Universidad de la Cuenca del Plata · ISI 4to Año · LN · Grupo 3 · 2026**
+**Modelos y Simulación · Tecnología, Ciencia y Responsabilidad Social**
 
-Producto: Budín Nutritivo de Lentejas, Manzana y Zucchini
+Producto: Nutridin (Budín de Lentejas, Manzana y Zucchini)
 Fecha de generación: {fecha}
 
 ---"""
