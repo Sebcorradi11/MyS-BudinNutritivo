@@ -1,8 +1,7 @@
 import streamlit as st
-import numpy as np
 import pandas as pd
 
-from datos.parametros import EVENTO, CAPACIDAD, COMERCIAL
+from datos.parametros import EVENTO, CAPACIDAD, COMERCIAL, TIEMPOS, RECETA
 from simuladores.flujo_personas import simular_flujo, escenarios_flujo
 from simuladores.stock_porciones import simular_stock, escenarios_stock
 from simuladores.viabilidad import simular_viabilidad, escenarios_viabilidad, calcular_costo_materia_prima
@@ -12,6 +11,7 @@ from utils.graficos import (
     grafico_barras,
     grafico_escenarios,
     grafico_punto_equilibrio,
+    grafico_flujo_produccion,
     COLORES,
 )
 from utils.informe import generar_informe
@@ -20,17 +20,170 @@ from utils.informe import generar_informe
 # CONFIGURACIÓN DE PÁGINA
 # ─────────────────────────────────────────
 st.set_page_config(
-    page_title="Simulador — Budín Nutritivo",
+    page_title="Budín Nutritivo — Simulador",
     page_icon="🍞",
     layout="wide",
 )
 
 # ─────────────────────────────────────────
+# ESTILOS PERSONALIZADOS
+# ─────────────────────────────────────────
+st.markdown("""
+<style>
+/* Fondo general */
+.stApp { background-color: #FAF6F1; }
+
+/* Sidebar */
+[data-testid="stSidebar"] {
+    background-color: #F0E8DC;
+    border-right: 1px solid #E2D3C0;
+}
+
+/* Tarjetas / expanders */
+[data-testid="stExpander"] {
+    background-color: #FFFFFF;
+    border: 1px solid #E2D3C0;
+    border-radius: 10px;
+}
+
+/* Botón primario */
+.stButton > button[kind="primary"] {
+    background-color: #2C1810;
+    color: #FAF6F1;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+}
+.stButton > button[kind="primary"]:hover {
+    background-color: #3D2418;
+    color: #FAF6F1;
+}
+
+/* Botón secundario */
+.stButton > button[kind="secondary"] {
+    background-color: transparent;
+    color: #2C1810;
+    border: 1.5px solid #2C1810;
+    border-radius: 8px;
+}
+
+/* Métricas */
+[data-testid="stMetric"] {
+    background-color: #FFFFFF;
+    border: 1px solid #E2D3C0;
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+}
+[data-testid="stMetricLabel"] { color: #6B4F3A; font-size: 0.8rem; }
+[data-testid="stMetricValue"] { color: #2C1810; font-weight: 700; }
+
+/* Tabs */
+.stTabs [data-baseweb="tab-list"] {
+    background-color: #F0E8DC;
+    border-radius: 10px;
+    padding: 4px;
+}
+.stTabs [data-baseweb="tab"] {
+    border-radius: 8px;
+    color: #6B4F3A;
+    font-weight: 500;
+}
+.stTabs [aria-selected="true"] {
+    background-color: #2C1810 !important;
+    color: #FAF6F1 !important;
+}
+
+/* Inputs */
+input, textarea, [data-baseweb="input"] {
+    background-color: #FFFFFF !important;
+    border-color: #D4C4B0 !important;
+    border-radius: 8px !important;
+}
+
+/* Sliders — track */
+[data-testid="stSlider"] [role="slider"] {
+    background-color: #2C1810 !important;
+}
+
+/* Divisor */
+hr { border-color: #E2D3C0; }
+
+/* Info / success / warning boxes */
+[data-testid="stAlert"] { border-radius: 10px; }
+
+/* Badges del header */
+.badge-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background-color: #2C1810;
+    color: #FAF6F1;
+    border-radius: 20px;
+    padding: 5px 14px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    margin-right: 8px;
+    letter-spacing: 0.02em;
+}
+
+/* Etiqueta de sección tipo small-caps */
+.section-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #C9952A;
+    margin-bottom: 2px;
+}
+
+/* Tarjeta de etapa productiva */
+.etapa-card {
+    background: #FFFFFF;
+    border: 1px solid #E2D3C0;
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.etapa-num {
+    background-color: #2C1810;
+    color: #FAF6F1;
+    border-radius: 50%;
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.78rem;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+.etapa-info { flex: 1; }
+.etapa-nombre { font-weight: 600; color: #2C1810; font-size: 0.9rem; }
+.etapa-tiempo { color: #6B4F3A; font-size: 0.78rem; }
+.etapa-dur { color: #C9952A; font-weight: 700; font-size: 0.88rem; }
+</style>
+""", unsafe_allow_html=True)
+
+# ─────────────────────────────────────────
 # HEADER
 # ─────────────────────────────────────────
-st.title("🍞 Simulador de Producción Masiva")
-st.subheader("Budín Nutritivo de Lentejas, Manzana y Zucchini")
-st.caption("Universidad de la Cuenca del Plata · ISI 4to Año · Modelos y Simulación · Grupo 3 · 2026")
+col_titulo, col_badges = st.columns([3, 2])
+with col_titulo:
+    st.markdown('<p class="section-label">Simulador de Producción Alimentaria</p>', unsafe_allow_html=True)
+    st.title("🍞 Budín Nutritivo")
+    st.caption("Universidad de la Cuenca del Plata · ISI 4to Año · Modelos y Simulación · Grupo 3 · 2026")
+with col_badges:
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown(
+        '<span class="badge-pill">🧪 3 simuladores</span>'
+        '<span class="badge-pill">🥚 10 ingredientes</span>'
+        '<span class="badge-pill">⚙️ 6 etapas</span>',
+        unsafe_allow_html=True,
+    )
 st.divider()
 
 # ─────────────────────────────────────────
@@ -52,10 +205,11 @@ if "params_viabilidad" not in st.session_state:
 # ─────────────────────────────────────────
 # TABS
 # ─────────────────────────────────────────
-tab1, tab2, tab3 = st.tabs([
+tab1, tab2, tab3, tab4 = st.tabs([
     "👥 Flujo de Personas",
     "📦 Stock de Porciones",
     "💰 Viabilidad Comercial",
+    "🏭 Línea de Producción",
 ])
 
 
@@ -63,10 +217,11 @@ tab1, tab2, tab3 = st.tabs([
 # TAB 1 — FLUJO DE PERSONAS
 # ═════════════════════════════════════════
 with tab1:
-    st.header("Simulador de Flujo de Personas y Formulario Digital")
-    st.markdown("**Modelo:** Simulación de eventos discretos · Estima saturación del sistema durante el evento.")
+    st.markdown('<p class="section-label">Simulador 1 · Eventos Discretos</p>', unsafe_allow_html=True)
+    st.header("Flujo de Personas y Formulario Digital")
+    st.markdown("Estima saturación del sistema, tiempos de espera y carga del formulario QR durante el evento.")
 
-    col_params, col_resultados = st.columns([1, 2])
+    col_params, col_resultados = st.columns([1, 2], gap="large")
 
     with col_params:
         st.subheader("Parámetros")
@@ -79,33 +234,29 @@ with tab1:
             "Capacidad simultánea del sistema", min_value=1, max_value=100,
             value=15, step=1,
         )
-
         st.markdown("**Tasa de llegada (personas/min)**")
-        c1, c2 = st.columns(2)
-        tasa_min = c1.number_input("Mín", min_value=0.1, max_value=20.0,
-                                    value=float(EVENTO["tasa_llegada_personas_min"]),
-                                    step=0.5, key="tasa_min")
-        tasa_max = c2.number_input("Máx", min_value=0.1, max_value=20.0,
-                                    value=float(EVENTO["tasa_llegada_personas_max"]),
-                                    step=0.5, key="tasa_max")
+        tasa_min = st.number_input("Tasa mínima", min_value=0.1, max_value=20.0,
+                                   value=float(EVENTO["tasa_llegada_personas_min"]),
+                                   step=0.5, key="tasa_min")
+        tasa_max = st.number_input("Tasa máxima", min_value=0.1, max_value=20.0,
+                                   value=float(EVENTO["tasa_llegada_personas_max"]),
+                                   step=0.5, key="tasa_max")
 
         st.markdown("**Tiempo de degustación (min)**")
-        c3, c4 = st.columns(2)
-        deg_min = c3.number_input("Mín", min_value=0.5, max_value=30.0,
-                                   value=float(EVENTO["tiempo_degustacion_min"]),
-                                   step=0.5, key="deg_min")
-        deg_max = c4.number_input("Máx", min_value=0.5, max_value=30.0,
-                                   value=float(EVENTO["tiempo_degustacion_max"]),
-                                   step=0.5, key="deg_max")
+        deg_min = st.number_input("Degustación mínima", min_value=0.5, max_value=30.0,
+                                  value=float(EVENTO["tiempo_degustacion_min"]),
+                                  step=0.5, key="deg_min")
+        deg_max = st.number_input("Degustación máxima", min_value=0.5, max_value=30.0,
+                                  value=float(EVENTO["tiempo_degustacion_max"]),
+                                  step=0.5, key="deg_max")
 
         st.markdown("**Tiempo de formulario QR (min)**")
-        c5, c6 = st.columns(2)
-        form_min = c5.number_input("Mín", min_value=0.5, max_value=30.0,
-                                    value=float(EVENTO["tiempo_formulario_min"]),
-                                    step=0.5, key="form_min")
-        form_max = c6.number_input("Máx", min_value=0.5, max_value=30.0,
-                                    value=float(EVENTO["tiempo_formulario_max"]),
-                                    step=0.5, key="form_max")
+        form_min = st.number_input("Formulario mínimo", min_value=0.5, max_value=30.0,
+                                   value=float(EVENTO["tiempo_formulario_min"]),
+                                   step=0.5, key="form_min")
+        form_max = st.number_input("Formulario máximo", min_value=0.5, max_value=30.0,
+                                   value=float(EVENTO["tiempo_formulario_max"]),
+                                   step=0.5, key="form_max")
 
         ejecutar_flujo = st.button("▶ Simular flujo", use_container_width=True, type="primary")
 
@@ -144,18 +295,38 @@ with tab1:
                 st.session_state["metricas_flujo"] = met_flujo
                 st.session_state["params_flujo"] = params
 
-                # Métricas principales
-                m1, m2, m3, m4 = st.columns(4)
-                m1.metric("Duración evento", f"{met_flujo['tiempo_total_evento']} min")
-                m2.metric("Tiempo prom. sistema", f"{met_flujo['tiempo_promedio_sistema']} min")
-                m3.metric("Con espera", f"{met_flujo['comensales_con_espera']} personas")
-                m4.metric("Saturación", met_flujo["saturacion"],
-                          delta=f"{met_flujo['pct_saturacion']}%",
-                          delta_color="inverse")
+                pico = met_flujo["pico_concurrencia"]
+                cap  = met_flujo["capacidad_sistema"]
+
+                # Información contextual sobre concurrencia real vs capacidad configurada
+                if cap > pico:
+                    st.info(
+                        f"Con los parámetros actuales, el **pico de concurrencia fue {pico} personas simultáneas** "
+                        f"(capacidad configurada: {cap}). "
+                        f"Si el evento tiene llegadas más masivas o tiempos más largos, "
+                        f"la saturación puede aumentar significativamente."
+                    )
+                elif cap <= pico:
+                    st.warning(
+                        f"**La capacidad del sistema fue superada.** "
+                        f"El pico de concurrencia fue {pico} personas simultáneas "
+                        f"con capacidad de {cap}. Hay comensales que esperaron."
+                    )
+
+                # Métricas principales — 2x2
+                ma1, ma2 = st.columns(2)
+                mb1, mb2 = st.columns(2)
+                ma1.metric("Duración evento", f"{met_flujo['tiempo_total_evento']} min")
+                ma2.metric("Tiempo prom. sistema", f"{met_flujo['tiempo_promedio_sistema']} min")
+                mb1.metric("Con espera", f"{met_flujo['comensales_con_espera']} personas")
+                mb2.metric("Saturación", met_flujo["saturacion"],
+                           delta=f"{met_flujo['pct_saturacion']}%",
+                           delta_color="inverse")
+                st.caption(f"Pico de concurrencia real: **{pico} personas simultáneas** · Capacidad configurada: {cap}")
 
                 st.info(f"💡 {met_flujo['recomendacion']}")
 
-                # Gráfico distribución tiempos
+                # Gráficos apilados verticalmente para que tengan ancho completo
                 fig_deg = grafico_histograma(
                     datos=df_flujo["Degustación (min)"].tolist(),
                     titulo="Distribución de tiempos de degustación",
@@ -168,11 +339,9 @@ with tab1:
                     etiqueta_x="Minutos",
                     color=COLORES["secundario"],
                 )
-                gc1, gc2 = st.columns(2)
-                gc1.plotly_chart(fig_deg, use_container_width=True)
-                gc2.plotly_chart(fig_form, use_container_width=True)
+                st.plotly_chart(fig_deg, use_container_width=True)
+                st.plotly_chart(fig_form, use_container_width=True)
 
-                # Tabla detalle (colapsable)
                 with st.expander("Ver tabla de eventos"):
                     st.dataframe(df_flujo, use_container_width=True)
 
@@ -206,19 +375,19 @@ with tab1:
             etiqueta_y="Minutos",
             colores=[COLORES["optimista"], COLORES["esperado"], COLORES["pesimista"]],
         )
-        sc1, sc2 = st.columns(2)
-        sc1.plotly_chart(fig_sat, use_container_width=True)
-        sc2.plotly_chart(fig_dur, use_container_width=True)
+        st.plotly_chart(fig_sat, use_container_width=True)
+        st.plotly_chart(fig_dur, use_container_width=True)
 
 
 # ═════════════════════════════════════════
 # TAB 2 — STOCK DE PORCIONES
 # ═════════════════════════════════════════
 with tab2:
-    st.header("Simulador de Stock de Porciones")
-    st.markdown("**Modelo:** Monte Carlo · Estima probabilidad de quiebre de stock y desperdicio.")
+    st.markdown('<p class="section-label">Simulador 2 · Monte Carlo</p>', unsafe_allow_html=True)
+    st.header("Stock de Porciones")
+    st.markdown("Estima probabilidad de quiebre de stock, desperdicio y cantidad óptima de lotes a preparar.")
 
-    col_params2, col_resultados2 = st.columns([1, 2])
+    col_params2, col_resultados2 = st.columns([1, 2], gap="large")
 
     with col_params2:
         st.subheader("Parámetros")
@@ -228,19 +397,21 @@ with tab2:
             value=EVENTO["comensales_esperados"], step=5, key="s_com",
         )
         budines_lote = st.number_input(
-            "Budines por lote", min_value=1, max_value=50,
+            "Budines por lote (hornada)", min_value=1, max_value=50,
             value=CAPACIDAD["budines_por_lote"], step=1, key="s_bl",
+        )
+        porciones_budin = st.number_input(
+            "Porciones por budín", min_value=1, max_value=50,
+            value=CAPACIDAD["porciones_por_budin"], step=1, key="s_pb",
         )
         lotes_preparados = st.number_input(
             "Lotes a preparar", min_value=1, max_value=200,
-            value=15, step=1, key="s_lp",
+            value=3, step=1, key="s_lp",
         )
-
-        st.markdown("**% de consumo esperado**")
-        cs1, cs2 = st.columns(2)
-        pct_min = cs1.slider("Mín %", min_value=10, max_value=100, value=70, step=5, key="pct_min") / 100
-        pct_max = cs2.slider("Máx %", min_value=10, max_value=100, value=90, step=5, key="pct_max") / 100
-
+        pct_min = st.slider("% consumo mínimo", min_value=10, max_value=100,
+                            value=70, step=5, key="pct_min") / 100
+        pct_max = st.slider("% consumo máximo", min_value=10, max_value=100,
+                            value=90, step=5, key="pct_max") / 100
         iteraciones_s = st.select_slider(
             "Iteraciones Monte Carlo",
             options=[100, 500, 1000, 5000, 10000],
@@ -267,6 +438,7 @@ with tab2:
                     pct_consumo_min=pct_min,
                     pct_consumo_max=pct_max,
                     budines_por_lote=budines_lote,
+                    porciones_por_budin=porciones_budin,
                     lotes_preparados=lotes_preparados,
                     iteraciones=iteraciones_s,
                 )
@@ -276,19 +448,19 @@ with tab2:
                 st.session_state["metricas_stock"] = met_stock
                 st.session_state["params_stock"] = params2
 
-                # Métricas principales
-                m1, m2, m3, m4 = st.columns(4)
-                m1.metric("Porciones disponibles", met_stock["total_porciones"])
-                m2.metric("Demanda promedio", f"{met_stock['demanda_promedio']} uds")
-                m3.metric("Prob. quiebre", f"{met_stock['prob_quiebre']}%",
-                          delta_color="inverse")
-                m4.metric("Lotes recomendados", met_stock["lotes_recomendados"])
+                # Métricas 2x2
+                ma1, ma2 = st.columns(2)
+                mb1, mb2 = st.columns(2)
+                ma1.metric("Porciones disponibles", met_stock["total_porciones"])
+                ma2.metric("Demanda promedio", f"{met_stock['demanda_promedio']} uds")
+                mb1.metric("Prob. quiebre", f"{met_stock['prob_quiebre']}%",
+                           delta_color="inverse")
+                mb2.metric("Lotes recomendados", met_stock["lotes_recomendados"])
 
                 viabilidad_color = "success" if met_stock["prob_quiebre"] < 10 else \
                                    "warning" if met_stock["prob_quiebre"] < 30 else "error"
                 getattr(st, viabilidad_color)(f"💡 {met_stock['recomendacion']}")
 
-                # Histogramas
                 fig_dem = grafico_histograma(
                     datos=df_stock["Demanda (porciones)"].tolist(),
                     titulo="Distribución de demanda (Monte Carlo)",
@@ -303,9 +475,8 @@ with tab2:
                     etiqueta_x="Porciones desperdiciadas",
                     color=COLORES["esperado"],
                 )
-                gc1, gc2 = st.columns(2)
-                gc1.plotly_chart(fig_dem, use_container_width=True)
-                gc2.plotly_chart(fig_desp, use_container_width=True)
+                st.plotly_chart(fig_dem, use_container_width=True)
+                st.plotly_chart(fig_desp, use_container_width=True)
 
                 with st.expander("Ver tabla de iteraciones (primeras 100)"):
                     st.dataframe(df_stock.head(100), use_container_width=True)
@@ -323,6 +494,7 @@ with tab2:
         for clave, esc in escenarios2.items():
             p = {k: v for k, v in esc.items() if k not in ("nombre", "descripcion")}
             p["budines_por_lote"] = CAPACIDAD["budines_por_lote"]
+            p["porciones_por_budin"] = CAPACIDAD["porciones_por_budin"]
             _, m = simular_stock(**p)
             nombres2.append(esc["nombre"])
             prob_q.append(m["prob_quiebre"])
@@ -341,23 +513,23 @@ with tab2:
             etiqueta_y="Porciones",
             colores=[COLORES["optimista"], COLORES["esperado"], COLORES["pesimista"]],
         )
-        sc1, sc2 = st.columns(2)
-        sc1.plotly_chart(fig_pq, use_container_width=True)
-        sc2.plotly_chart(fig_dp, use_container_width=True)
+        st.plotly_chart(fig_pq, use_container_width=True)
+        st.plotly_chart(fig_dp, use_container_width=True)
 
 
 # ═════════════════════════════════════════
 # TAB 3 — VIABILIDAD COMERCIAL
 # ═════════════════════════════════════════
 with tab3:
-    st.header("Simulador de Viabilidad Productiva y Comercial")
-    st.markdown("**Modelo:** Monte Carlo económico · Estima rentabilidad, punto de equilibrio y probabilidad de viabilidad.")
+    st.markdown('<p class="section-label">Simulador 3 · Monte Carlo Económico</p>', unsafe_allow_html=True)
+    st.header("Viabilidad Productiva y Comercial")
+    st.markdown("Estima rentabilidad mensual, punto de equilibrio y probabilidad de viabilidad a escala organizacional.")
 
     # Costo base de materia prima (informativo)
     costo_mp_base, desglose_mp = calcular_costo_materia_prima()
     st.info(f"Costo base de materia prima por budín: **${costo_mp_base:,.0f} ARS** (calculado a partir de la receta y precios de referencia)")
 
-    col_params3, col_resultados3 = st.columns([1, 2])
+    col_params3, col_resultados3 = st.columns([1, 2], gap="large")
 
     with col_params3:
         st.subheader("Parámetros")
@@ -428,15 +600,16 @@ with tab3:
                 st.session_state["metricas_viabilidad"] = met_viab
                 st.session_state["params_viabilidad"] = params3
 
-                # Métricas principales
-                m1, m2, m3, m4 = st.columns(4)
-                m1.metric("Viabilidad", met_viab["viabilidad"])
-                m2.metric("Prob. viable", f"{met_viab['prob_viabilidad']}%")
+                # Métricas 2x2
+                ma1, ma2 = st.columns(2)
+                mb1, mb2 = st.columns(2)
+                ma1.metric("Viabilidad", met_viab["viabilidad"])
+                ma2.metric("Prob. viable", f"{met_viab['prob_viabilidad']}%")
                 ganancia_prom = met_viab["ganancia_promedio"]
-                m3.metric("Ganancia prom./mes",
-                          f"${ganancia_prom:,.0f}",
-                          delta_color="normal" if ganancia_prom >= 0 else "inverse")
-                m4.metric("Punto de equilibrio", f"{met_viab['punto_equilibrio_promedio']:,.0f} uds")
+                mb1.metric("Ganancia prom./mes",
+                           f"${ganancia_prom:,.0f}",
+                           delta_color="normal" if ganancia_prom >= 0 else "inverse")
+                mb2.metric("Punto de equilibrio", f"{met_viab['punto_equilibrio_promedio']:,.0f} uds")
 
                 st.info(f"💡 {met_viab['recomendacion']}")
 
@@ -465,9 +638,8 @@ with tab3:
                     punto_equilibrio=pe_val,
                 )
 
-                gc1, gc2 = st.columns(2)
-                gc1.plotly_chart(fig_gan, use_container_width=True)
-                gc2.plotly_chart(fig_pe, use_container_width=True)
+                st.plotly_chart(fig_gan, use_container_width=True)
+                st.plotly_chart(fig_pe, use_container_width=True)
 
                 # Desglose de costos de materia prima
                 with st.expander("Ver desglose de costo de materia prima"):
@@ -521,6 +693,110 @@ with tab3:
             "Ganancia prom. ($)": ganancias_esc,
         })
         st.dataframe(df_resumen, use_container_width=True)
+
+
+# ═════════════════════════════════════════
+# TAB 4 — LÍNEA DE PRODUCCIÓN
+# ═════════════════════════════════════════
+with tab4:
+    st.markdown('<p class="section-label">Proceso Productivo · Budín Nutritivo</p>', unsafe_allow_html=True)
+    st.header("Línea de Producción")
+    st.markdown("Visualización del flujo productivo: etapas del proceso, tiempos y capacidad por jornada.")
+
+    col_gantt, col_etapas = st.columns([2, 1], gap="large")
+
+    # Etapas del proceso con tiempos desde parametros.py
+    ETAPAS = [
+        ("Preparación",      TIEMPOS["preparacion_min"],       TIEMPOS["preparacion_max"],       "🔪"),
+        ("Cocción lentejas", TIEMPOS["coccion_lentejas_min"],  TIEMPOS["coccion_lentejas_max"],  "🫕"),
+        ("Mezclado",         TIEMPOS["mezclado_min"],          TIEMPOS["mezclado_max"],          "🥣"),
+        ("Horneado",         TIEMPOS["horneado_min"],          TIEMPOS["horneado_max"],          "🔥"),
+        ("Enfriado",         TIEMPOS["enfriado_min"],          TIEMPOS["enfriado_max"],          "❄️"),
+        ("Envasado",         TIEMPOS["envasado_min"],          TIEMPOS["envasado_max"],          "📦"),
+    ]
+
+    with col_etapas:
+        st.markdown('<p class="section-label">Etapas del proceso</p>', unsafe_allow_html=True)
+        tiempo_total_prom = 0
+        for i, (nombre, t_min, t_max, icono) in enumerate(ETAPAS, 1):
+            prom = (t_min + t_max) / 2
+            tiempo_total_prom += prom
+            st.markdown(f"""
+            <div class="etapa-card">
+                <div class="etapa-num">{i}</div>
+                <div class="etapa-info">
+                    <div class="etapa-nombre">{icono} {nombre}</div>
+                    <div class="etapa-tiempo">{t_min}–{t_max} min</div>
+                </div>
+                <div class="etapa-dur">{prom:.0f} min</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        ma, mb = st.columns(2)
+        ma.metric("Tiempo total prom.", f"{tiempo_total_prom:.0f} min")
+        mb.metric("Budines por lote", CAPACIDAD["budines_por_lote"])
+
+        st.markdown('<p class="section-label" style="margin-top:16px">Ingredientes</p>', unsafe_allow_html=True)
+        ingredientes_labels = {
+            "lentejas_cocidas_g": "Lentejas cocidas",
+            "harina_avena_g": "Harina de avena",
+            "zucchini_rallado_g": "Zucchini rallado",
+            "manzana_rallada_g": "Manzana rallada",
+            "huevos_unidades": "Huevos",
+            "cacao_amargo_g": "Cacao amargo",
+            "miel_g": "Miel / azúcar mascabo",
+            "polvo_hornear_g": "Polvo de hornear",
+            "esencia_vainilla_ml": "Esencia de vainilla",
+            "aceite_ml": "Aceite vegetal",
+        }
+        unidades = {
+            "lentejas_cocidas_g": "g", "harina_avena_g": "g", "zucchini_rallado_g": "g",
+            "manzana_rallada_g": "g", "huevos_unidades": "ud", "cacao_amargo_g": "g",
+            "miel_g": "g", "polvo_hornear_g": "g", "esencia_vainilla_ml": "ml", "aceite_ml": "ml",
+        }
+        for clave, label in ingredientes_labels.items():
+            valor = RECETA[clave]
+            ud = unidades[clave]
+            st.markdown(f"""
+            <div style="display:flex;justify-content:space-between;padding:5px 0;
+                        border-bottom:1px solid #E2D3C0;font-size:0.85rem;">
+                <span style="color:#2C1810;">{label}</span>
+                <span style="color:#C9952A;font-weight:700;">{valor} {ud}</span>
+            </div>""", unsafe_allow_html=True)
+
+    with col_gantt:
+        st.markdown('<p class="section-label">Flujo del proceso productivo</p>', unsafe_allow_html=True)
+
+        fig_flujo = grafico_flujo_produccion([
+            {"nombre": nombre, "tiempo_min": t_min, "tiempo_max": t_max, "icono": icono}
+            for nombre, t_min, t_max, icono in ETAPAS
+        ])
+        st.plotly_chart(fig_flujo, use_container_width=True)
+
+        # Tabla de tiempos por etapa
+        st.markdown('<p class="section-label" style="margin-top:16px">Tiempos por etapa</p>',
+                    unsafe_allow_html=True)
+        df_tiempos = pd.DataFrame([
+            {
+                "Etapa": f"{icono} {nombre}",
+                "Mín (min)": t_min,
+                "Máx (min)": t_max,
+                "Promedio (min)": round((t_min + t_max) / 2, 1),
+            }
+            for nombre, t_min, t_max, icono in ETAPAS
+        ])
+        st.dataframe(df_tiempos, use_container_width=True, hide_index=True)
+
+        # Métricas de capacidad
+        st.markdown('<p class="section-label" style="margin-top:16px">Capacidad productiva</p>',
+                    unsafe_allow_html=True)
+        tiempo_ciclo = sum((t_min + t_max) / 2 for _, t_min, t_max, _ in ETAPAS)
+        lotes_por_jornada = int((CAPACIDAD["jornada_horas"] * 60) / tiempo_ciclo)
+        mc1, mc2, mc3 = st.columns(3)
+        mc1.metric("Tiempo de ciclo", f"{tiempo_ciclo:.0f} min")
+        mc2.metric("Lotes / jornada", lotes_por_jornada)
+        mc3.metric("Budines / jornada", lotes_por_jornada * CAPACIDAD["budines_por_lote"])
 
 
 # ─────────────────────────────────────────
