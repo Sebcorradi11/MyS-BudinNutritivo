@@ -294,3 +294,104 @@ def grafico_gantt(df_lotes: pd.DataFrame, max_lotes: int = 10) -> go.Figure:
         plot_bgcolor=COLORES["fondo"],
     )
     return fig
+
+
+# ─────────────────────────────────────────
+# DIAGRAMA DE FLUJO DEL PROCESO PRODUCTIVO
+# ─────────────────────────────────────────
+def grafico_flujo_produccion(etapas: list[dict]) -> go.Figure:
+    """
+    Pipeline horizontal del proceso productivo.
+    Cada etapa es un dict con: nombre, tiempo_min, tiempo_max, icono.
+    Muestra cajas conectadas con flechas, colores degradados del marrón al ámbar.
+    """
+    n = len(etapas)
+    fig = go.Figure()
+
+    # Paleta degradada marrón → ámbar en tonos cálidos del proyecto
+    paleta = [
+        "#3D2010", "#5C3317", "#7A4520", "#9A5C28",
+        "#B87030", "#C9952A", "#D4A843",
+    ]
+    colores = [paleta[i % len(paleta)] for i in range(n)]
+
+    box_w = 0.12      # ancho relativo de cada caja (en coordenadas 0-1)
+    box_h = 0.45      # alto de cada caja
+    gap   = 0.015     # espacio entre caja y flecha
+    y_center = 0.5
+
+    # Espaciado horizontal uniforme
+    total = n * box_w + (n - 1) * (gap * 2 + 0.03)
+    x_start = (1 - total) / 2
+
+    posiciones = []
+    x = x_start
+    for i in range(n):
+        posiciones.append(x)
+        x += box_w + gap * 2 + 0.03
+
+    # Cajas
+    for i, (etapa, color, xp) in enumerate(zip(etapas, colores, posiciones)):
+        prom = (etapa["tiempo_min"] + etapa["tiempo_max"]) / 2
+
+        # Rectángulo relleno
+        fig.add_shape(
+            type="rect",
+            x0=xp, x1=xp + box_w,
+            y0=y_center - box_h / 2, y1=y_center + box_h / 2,
+            fillcolor=color,
+            line=dict(color="#FAF6F1", width=2),
+            layer="below",
+        )
+
+        # Número de etapa (arriba)
+        fig.add_annotation(
+            x=xp + box_w / 2, y=y_center + box_h / 2 - 0.04,
+            text=f"<b>{i + 1}</b>",
+            showarrow=False,
+            font=dict(size=11, color="#FAF6F1", family="Arial"),
+            xanchor="center",
+        )
+        # Icono + nombre
+        fig.add_annotation(
+            x=xp + box_w / 2, y=y_center + 0.04,
+            text=f"<b>{etapa['icono']}<br>{etapa['nombre']}</b>",
+            showarrow=False,
+            font=dict(size=10, color="#FAF6F1", family="Arial"),
+            xanchor="center",
+            align="center",
+        )
+        # Tiempo promedio (abajo)
+        fig.add_annotation(
+            x=xp + box_w / 2, y=y_center - box_h / 2 + 0.06,
+            text=f"{prom:.0f} min",
+            showarrow=False,
+            font=dict(size=10, color="#FAD090", family="Arial"),
+            xanchor="center",
+        )
+
+        # Flecha hacia la siguiente caja
+        if i < n - 1:
+            x_arrow_start = xp + box_w + gap
+            x_arrow_end   = posiciones[i + 1] - gap
+            fig.add_annotation(
+                x=x_arrow_end, y=y_center,
+                ax=x_arrow_start, ay=y_center,
+                xref="x", yref="y", axref="x", ayref="y",
+                showarrow=True,
+                arrowhead=2,
+                arrowsize=1.2,
+                arrowwidth=2,
+                arrowcolor="#C9952A",
+            )
+
+    fig.update_layout(
+        xaxis=dict(visible=False, range=[0, 1]),
+        yaxis=dict(visible=False, range=[0, 1]),
+        plot_bgcolor="#FAF6F1",
+        paper_bgcolor="#FAF6F1",
+        height=220,
+        margin=dict(l=10, r=10, t=10, b=10),
+        showlegend=False,
+    )
+    return fig
