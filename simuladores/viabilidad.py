@@ -157,29 +157,32 @@ def escenarios_viabilidad() -> dict:
     return {
         "optimista": {
             "nombre": "🟢 Optimista",
-            "lotes_por_dia": 15,
-            "precio_venta": 550,          # por porción
-            "costos_fijos_mensuales": 70000,
-            "margen_variacion_costos_pct": 5,
-            "aceptacion_sensorial_pct": 80,
+    "lotes_por_dia": 15,
+    "precio_venta": 550,
+    "costos_fijos_mensuales": 70000,
+    "costo_mano_obra_budin": 500,
+    "margen_variacion_costos_pct": 5,
+    "aceptacion_sensorial_pct": 80,
             "descripcion": "Alta producción, buen precio por porción, alta aceptación sensorial.",
         },
         "esperado": {
             "nombre": "🟡 Esperado",
-            "lotes_por_dia": 10,
-            "precio_venta": 450,          # por porción
-            "costos_fijos_mensuales": 80000,
-            "margen_variacion_costos_pct": 15,
-            "aceptacion_sensorial_pct": 65,
+    "lotes_por_dia": 10,
+    "precio_venta": 450,
+    "costos_fijos_mensuales": 80000,
+    "costo_mano_obra_budin": 500,
+    "margen_variacion_costos_pct": 15,
+    "aceptacion_sensorial_pct": 65,
             "descripcion": "Condiciones probables basadas en datos reales.",
         },
         "pesimista": {
             "nombre": "🔴 Pesimista",
-            "lotes_por_dia": 5,
-            "precio_venta": 380,          # por porción
-            "costos_fijos_mensuales": 90000,
-            "margen_variacion_costos_pct": 25,
-            "aceptacion_sensorial_pct": 40,
+    "lotes_por_dia": 5,
+    "precio_venta": 380,
+    "costos_fijos_mensuales": 90000,
+    "costo_mano_obra_budin": 500,
+    "margen_variacion_costos_pct": 25,
+    "aceptacion_sensorial_pct": 40,
             "descripcion": "Baja producción, precio bajo por porción, baja aceptación sensorial.",
         },
     }
