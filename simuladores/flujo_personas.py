@@ -38,22 +38,25 @@ def simular_flujo(
 
     eventos = []
     tiempo_actual = 0
-    sistema_ocupado = 0  # personas actualmente en el sistema
+    tiempos_salida = []  # registro de salidas para contar concurrencia real
+    pico_concurrencia = 0
 
     for i in range(comensales):
 
-        # Tiempo entre llegadas (distribución uniforme)
+        # Intervalo entre llegadas: si llegan λ personas/min, el intervalo es 1/λ min
         intervalo_llegada = np.random.uniform(
-            60 / tasa_llegada_max,  # intervalo mínimo
-            60 / tasa_llegada_min,  # intervalo máximo
+            1 / tasa_llegada_max,   # intervalo mínimo (más personas por min → menor intervalo)
+            1 / tasa_llegada_min,   # intervalo máximo
         )
         tiempo_llegada = tiempo_actual + intervalo_llegada
         tiempo_actual = tiempo_llegada
 
+        # Contar personas que llegaron antes y aún no salieron
+        en_sistema = sum(1 for t_sal in tiempos_salida if t_sal > tiempo_llegada)
+        pico_concurrencia = max(pico_concurrencia, en_sistema)
+
         # Espera si el sistema está en capacidad máxima
-        espera = 0
-        if sistema_ocupado >= capacidad_sistema:
-            espera = np.random.uniform(1, 3)
+        espera = np.random.uniform(1, 3) if en_sistema >= capacidad_sistema else 0
 
         # Degustación
         t_degust = np.random.uniform(t_degustacion_min, t_degustacion_max)
@@ -66,12 +69,12 @@ def simular_flujo(
 
         # Fin del proceso
         tiempo_salida = tiempo_llegada + t_total
-
-        sistema_ocupado = max(0, sistema_ocupado - 1)
+        tiempos_salida.append(tiempo_salida)
 
         eventos.append({
             "Comensal": i + 1,
             "Llegada (min)": round(tiempo_llegada, 2),
+            "En sistema al llegar": en_sistema,
             "Espera (min)": round(espera, 2),
             "Degustación (min)": round(t_degust, 2),
             "Formulario (min)": round(t_form, 2),
@@ -89,6 +92,8 @@ def simular_flujo(
 
     metricas = {
         "comensales": comensales,
+        "capacidad_sistema": capacidad_sistema,
+        "pico_concurrencia": pico_concurrencia,
         "tiempo_total_evento": round(df["Salida (min)"].max(), 1),
         "tiempo_promedio_sistema": round(df["Tiempo total (min)"].mean(), 1),
         "tiempo_promedio_degustacion": round(df["Degustación (min)"].mean(), 1),
