@@ -9,10 +9,11 @@ from simuladores.viabilidad import (
 PARAMS_BASE = dict(
     lotes_por_dia=10,
     budines_por_lote=2,
+    porciones_por_budin=10,
     dias_produccion_mes=22,
-    precio_venta=4500.0,
+    precio_venta=450.0,               # precio por PORCION
     costos_fijos_mensuales=80000.0,
-    costo_mano_obra_hora=2500.0,
+    costo_mano_obra_budin=500.0,
     margen_variacion_costos_pct=15.0,
     aceptacion_sensorial_pct=65.0,
     iteraciones=500,
@@ -53,9 +54,9 @@ def test_dataframe_tiene_n_iteraciones():
 
 def test_metricas_tienen_claves_esperadas():
     _, met = simular_viabilidad(**PARAMS_BASE)
-    claves = {"costo_mp_base", "ganancia_promedio", "prob_viabilidad",
-              "punto_equilibrio_promedio", "viabilidad", "recomendacion",
-              "budines_por_mes"}
+    claves = {"costo_mp_base", "costo_total_porcion", "ganancia_promedio",
+              "prob_viabilidad", "punto_equilibrio_promedio",
+              "viabilidad", "recomendacion", "budines_por_mes"}
     assert claves.issubset(set(met.keys()))
 
 
@@ -73,8 +74,8 @@ def test_prob_viabilidad_entre_0_y_100():
     assert 0 <= met["prob_viabilidad"] <= 100
 
 def test_precio_alto_aumenta_viabilidad():
-    _, met_bajo = simular_viabilidad(**{**PARAMS_BASE, "precio_venta": 500.0})
-    _, met_alto = simular_viabilidad(**{**PARAMS_BASE, "precio_venta": 20000.0})
+    _, met_bajo = simular_viabilidad(**{**PARAMS_BASE, "precio_venta": 50.0})
+    _, met_alto = simular_viabilidad(**{**PARAMS_BASE, "precio_venta": 2000.0})
     assert met_alto["prob_viabilidad"] >= met_bajo["prob_viabilidad"]
 
 def test_aceptacion_cero_da_ganancia_negativa():
@@ -105,6 +106,7 @@ def test_escenarios_son_ejecutables():
     for clave, esc in escenarios_viabilidad().items():
         params = {k: v for k, v in esc.items() if k not in ("nombre", "descripcion")}
         params["budines_por_lote"] = CAPACIDAD["budines_por_lote"]
+        params["porciones_por_budin"] = CAPACIDAD["porciones_por_budin"]
         params["dias_produccion_mes"] = COMERCIAL["dias_produccion_mes"]
         params["costo_mano_obra_hora"] = COMERCIAL["costo_mano_obra_hora"]
         _, met = simular_viabilidad(**params)
@@ -116,6 +118,7 @@ def test_optimista_mas_viable_que_pesimista():
     for clave, esc in escenarios_viabilidad().items():
         params = {k: v for k, v in esc.items() if k not in ("nombre", "descripcion")}
         params["budines_por_lote"] = CAPACIDAD["budines_por_lote"]
+        params["porciones_por_budin"] = CAPACIDAD["porciones_por_budin"]
         params["dias_produccion_mes"] = COMERCIAL["dias_produccion_mes"]
         params["costo_mano_obra_hora"] = COMERCIAL["costo_mano_obra_hora"]
         _, met = simular_viabilidad(**params)

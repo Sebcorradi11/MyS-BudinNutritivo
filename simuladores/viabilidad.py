@@ -5,7 +5,7 @@
 
 import numpy as np
 import pandas as pd
-from datos.parametros import RECETA, PRECIOS, TIEMPOS, CAPACIDAD, COMERCIAL, SEMILLA
+from datos.parametros import RECETA, PRECIOS, SEMILLA
 
 # ─────────────────────────────────────────
 # COSTO DE MATERIA PRIMA
@@ -44,10 +44,11 @@ def calcular_costo_materia_prima(
 def simular_viabilidad(
     lotes_por_dia: int,
     budines_por_lote: int,
+    porciones_por_budin: int,
     dias_produccion_mes: int,
-    precio_venta: float,
+    precio_venta: float,               # precio por PORCION (no por budín)
     costos_fijos_mensuales: float,
-    costo_mano_obra_hora: float,
+    costo_mano_obra_budin: float,      # costo de mano de obra por budín producido
     margen_variacion_costos_pct: float,
     aceptacion_sensorial_pct: float,
     iteraciones: int = 1000,
@@ -55,11 +56,12 @@ def simular_viabilidad(
 ) -> tuple[pd.DataFrame, dict]:
     """
     Simula la viabilidad comercial del budín usando Monte Carlo económico.
+    La unidad de venta es la PORCION (no el budín entero).
 
     En cada iteración varía:
         - Costo de materia prima (±margen_variacion_costos_pct)
-        - Demanda real (afectada por aceptación sensorial)
-        - Precio de venta (±5% variación de mercado)
+        - Demanda real en budines (afectada por aceptación sensorial)
+        - Precio por porción (±5% variación de mercado)
 
     Retorna:
         - df: DataFrame con el resultado de cada iteración
@@ -67,20 +69,9 @@ def simular_viabilidad(
     """
     np.random.seed(semilla)
 
-    # Costo base de materia prima
     costo_mp_base, _ = calcular_costo_materia_prima()
 
-    # Tiempo promedio por lote en horas
-    t_prom_lote = (
-        (TIEMPOS["preparacion_min"] + TIEMPOS["preparacion_max"]) / 2 +
-        (TIEMPOS["coccion_lentejas_min"] + TIEMPOS["coccion_lentejas_max"]) / 2 +
-        (TIEMPOS["mezclado_min"] + TIEMPOS["mezclado_max"]) / 2 +
-        (TIEMPOS["horneado_min"] + TIEMPOS["horneado_max"]) / 2 +
-        (TIEMPOS["enfriado_min"] + TIEMPOS["enfriado_max"]) / 2 +
-        (TIEMPOS["envasado_min"] + TIEMPOS["envasado_max"]) / 2
-    ) / 60
-
-    costo_mo_por_budin = (costo_mano_obra_hora * t_prom_lote) / budines_por_lote
+    costo_mo_por_budin = costo_mano_obra_budin
     budines_por_dia = lotes_por_dia * budines_por_lote
     budines_por_mes = budines_por_dia * dias_produccion_mes
 
@@ -88,7 +79,6 @@ def simular_viabilidad(
 
     for i in range(iteraciones):
 
-        # Variación aleatoria del costo de materia prima
         variacion_costo = np.random.uniform(
             1 - margen_variacion_costos_pct / 100,
             1 + margen_variacion_costos_pct / 100,
@@ -96,58 +86,59 @@ def simular_viabilidad(
         costo_mp_iter = costo_mp_base * variacion_costo
         costo_total_budin = costo_mp_iter + costo_mo_por_budin
 
-        # Variación aleatoria del precio de venta (±5%)
-        precio_iter = precio_venta * np.random.uniform(0.95, 1.05)
+        # Precio por porción con variación de mercado ±5%
+        precio_porcion_iter = precio_venta * np.random.uniform(0.95, 1.05)
 
-        # Demanda afectada por aceptación sensorial
+        # Demanda en budines afectada por aceptación sensorial
         factor_demanda = np.random.uniform(
             aceptacion_sensorial_pct / 100 * 0.9,
             aceptacion_sensorial_pct / 100 * 1.1,
         )
-        demanda_real = int(budines_por_mes * factor_demanda)
+        demanda_budines = int(budines_por_mes * factor_demanda)
 
-        # Ingresos y costos
-        ingreso = demanda_real * precio_iter
-        costo_variable = demanda_real * costo_total_budin
+        # Ingresos: se venden porciones (budines × porciones/budin × precio/porcion)
+        ingreso = demanda_budines * porciones_por_budin * precio_porcion_iter
+        costo_variable = demanda_budines * costo_total_budin
         costo_total = costo_variable + costos_fijos_mensuales
         ganancia = ingreso - costo_total
 
-        # Punto de equilibrio
-        contribucion = precio_iter - costo_total_budin
-        pe = costos_fijos_mensuales / contribucion if contribucion > 0 else float("inf")
+        # Punto de equilibrio en budines
+        contribucion_budin = precio_porcion_iter * porciones_por_budin - costo_total_budin
+        pe = costos_fijos_mensuales / contribucion_budin if contribucion_budin > 0 else float("inf")
 
         resultados.append({
             "Iteración": i + 1,
             "Costo MP/budín ($)": round(costo_mp_iter, 0),
             "Costo total/budín ($)": round(costo_total_budin, 0),
-            "Precio venta ($)": round(precio_iter, 0),
-            "Demanda (uds)": demanda_real,
+            "Precio/porción ($)": round(precio_porcion_iter, 0),
+            "Demanda (budines)": demanda_budines,
             "Ingreso ($)": round(ingreso, 0),
             "Costo total ($)": round(costo_total, 0),
             "Ganancia ($)": round(ganancia, 0),
-            "Punto equilibrio (uds)": round(pe, 0) if pe != float("inf") else 0,
+            "Punto equilibrio (budines)": round(pe, 0) if pe != float("inf") else 0,
             "Viable": "✅ Sí" if ganancia > 0 else "❌ No",
         })
 
     df = pd.DataFrame(resultados)
 
-    # ─────────────────────────────────────────
-    # MÉTRICAS
-    # ─────────────────────────────────────────
     viables = df[df["Ganancia ($)"] > 0]
     prob_viabilidad = len(viables) / iteraciones * 100
 
+    costo_total_base = costo_mp_base + costo_mo_por_budin
     metricas = {
         "costo_mp_base": round(costo_mp_base, 0),
+        "costo_mp_porcion": round(costo_mp_base / porciones_por_budin, 0),
         "costo_mo_por_budin": round(costo_mo_por_budin, 0),
-        "costo_total_budin": round(costo_mp_base + costo_mo_por_budin, 0),
+        "costo_total_budin": round(costo_total_base, 0),
+        "costo_total_porcion": round(costo_total_base / porciones_por_budin, 0),
+        "porciones_por_budin": porciones_por_budin,
         "budines_por_mes": budines_por_mes,
         "ganancia_promedio": round(df["Ganancia ($)"].mean(), 0),
         "ganancia_minima": round(df["Ganancia ($)"].min(), 0),
         "ganancia_maxima": round(df["Ganancia ($)"].max(), 0),
         "prob_viabilidad": round(prob_viabilidad, 1),
-        "punto_equilibrio_promedio": round(df["Punto equilibrio (uds)"].mean(), 0),
-        "precio_venta": precio_venta,
+        "punto_equilibrio_promedio": round(df["Punto equilibrio (budines)"].mean(), 0),
+        "precio_venta_porcion": precio_venta,
         "viabilidad": _clasificar_viabilidad(prob_viabilidad),
         "recomendacion": _recomendacion_viabilidad(prob_viabilidad, aceptacion_sensorial_pct),
     }
@@ -167,16 +158,16 @@ def escenarios_viabilidad() -> dict:
         "optimista": {
             "nombre": "🟢 Optimista",
             "lotes_por_dia": 15,
-            "precio_venta": 5500,
+            "precio_venta": 550,          # por porción
             "costos_fijos_mensuales": 70000,
             "margen_variacion_costos_pct": 5,
             "aceptacion_sensorial_pct": 80,
-            "descripcion": "Alta producción, buen precio, alta aceptación sensorial.",
+            "descripcion": "Alta producción, buen precio por porción, alta aceptación sensorial.",
         },
         "esperado": {
             "nombre": "🟡 Esperado",
             "lotes_por_dia": 10,
-            "precio_venta": 4500,
+            "precio_venta": 450,          # por porción
             "costos_fijos_mensuales": 80000,
             "margen_variacion_costos_pct": 15,
             "aceptacion_sensorial_pct": 65,
@@ -185,11 +176,11 @@ def escenarios_viabilidad() -> dict:
         "pesimista": {
             "nombre": "🔴 Pesimista",
             "lotes_por_dia": 5,
-            "precio_venta": 3800,
+            "precio_venta": 380,          # por porción
             "costos_fijos_mensuales": 90000,
             "margen_variacion_costos_pct": 25,
             "aceptacion_sensorial_pct": 40,
-            "descripcion": "Baja producción, precio bajo, baja aceptación sensorial.",
+            "descripcion": "Baja producción, precio bajo por porción, baja aceptación sensorial.",
         },
     }
 

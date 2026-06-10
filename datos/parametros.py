@@ -70,7 +70,7 @@ CAPACIDAD = {
 # ─────────────────────────────────────────
 COMERCIAL = {
     "margen_ganancia_pct": 50,
-    "costo_mano_obra_hora": 2500,
+    "costo_mano_obra_budin": 500,
     "costos_fijos_mensuales": 80000,
     "dias_produccion_mes": 22,
     "lotes_por_dia": 10,

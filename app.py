@@ -324,7 +324,42 @@ with tab1:
                            delta_color="inverse")
                 st.caption(f"Pico de concurrencia real: **{pico} personas simultáneas** · Capacidad configurada: {cap}")
 
-                st.info(f"💡 {met_flujo['recomendacion']}")
+                # ── Diagnóstico de saturación ─────────────────────────
+                st.markdown('<p class="section-label" style="margin-top:16px">¿Por qué este resultado?</p>',
+                            unsafe_allow_html=True)
+
+                intervalo_prom = round(2 / (tasa_min + tasa_max), 1)
+                t_servicio_prom = round((deg_min + deg_max + form_min + form_max) / 2, 1)
+                pico = met_flujo["pico_concurrencia"]
+
+                if met_flujo["saturacion"] == "Alta":
+                    st.warning(
+                        f"**Causa: la tasa de llegada supera la capacidad de atencion del sistema.** "
+                        f"En promedio llega 1 persona cada {intervalo_prom} min, pero el tiempo promedio de "
+                        f"atencion (degustacion + formulario) es de {t_servicio_prom} min. "
+                        f"Esto genera acumulacion: el pico fue de {pico} personas simultaneas "
+                        f"con capacidad configurada de {capacidad_sistema}. "
+                        f"El {met_flujo['pct_saturacion']}% de los comensales tuvo que esperar. "
+                        f"Recomendacion: {met_flujo['recomendacion']}"
+                    )
+                elif met_flujo["saturacion"] == "Media":
+                    st.info(
+                        f"**El sistema opera con saturacion moderada.** "
+                        f"El tiempo promedio de atencion ({t_servicio_prom} min) es relativamente alto "
+                        f"respecto al intervalo de llegada ({intervalo_prom} min), "
+                        f"lo que genera colas en momentos pico. "
+                        f"El pico de concurrencia fue {pico} personas sobre una capacidad de {capacidad_sistema}. "
+                        f"Recomendacion: {met_flujo['recomendacion']}"
+                    )
+                else:
+                    st.success(
+                        f"**El sistema funciona con baja saturacion.** "
+                        f"La capacidad de {capacidad_sistema} lugares simultaneos es suficiente "
+                        f"para el flujo de {comensales} comensales con llegadas cada {intervalo_prom} min "
+                        f"y atencion promedio de {t_servicio_prom} min. "
+                        f"El pico maximo registrado fue de {pico} personas simultaneas. "
+                        f"No se requieren medidas adicionales."
+                    )
 
                 # Gráficos apilados verticalmente para que tengan ancho completo
                 fig_deg = grafico_histograma(
@@ -399,19 +434,31 @@ with tab2:
         budines_lote = st.number_input(
             "Budines por lote (hornada)", min_value=1, max_value=50,
             value=CAPACIDAD["budines_por_lote"], step=1, key="s_bl",
+            help="Cuántos budines salen de cada hornada. Dato real del equipo de nutrición: 2 budines por lote.",
         )
         porciones_budin = st.number_input(
             "Porciones por budín", min_value=1, max_value=50,
             value=CAPACIDAD["porciones_por_budin"], step=1, key="s_pb",
+            help="Cuántas porciones (tajadas) rinde cada budín. Dato real: 10 porciones por budín.",
         )
         lotes_preparados = st.number_input(
             "Lotes a preparar", min_value=1, max_value=200,
             value=3, step=1, key="s_lp",
+            help="Cuántas hornadas se van a producir para el evento. Determina el stock total disponible.",
         )
+
+        total_prev = lotes_preparados * budines_lote * porciones_budin
+        st.info(
+            f"**{lotes_preparados} lotes × {budines_lote} budines × {porciones_budin} porciones "
+            f"= {total_prev} porciones disponibles**"
+        )
+
         pct_min = st.slider("% consumo mínimo", min_value=10, max_value=100,
-                            value=70, step=5, key="pct_min") / 100
+                            value=70, step=5, key="pct_min",
+                            help="Porcentaje mínimo de comensales que se estima consumirán una porción.") / 100
         pct_max = st.slider("% consumo máximo", min_value=10, max_value=100,
-                            value=90, step=5, key="pct_max") / 100
+                            value=90, step=5, key="pct_max",
+                            help="Porcentaje máximo de comensales que se estima consumirán una porción.") / 100
         iteraciones_s = st.select_slider(
             "Iteraciones Monte Carlo",
             options=[100, 500, 1000, 5000, 10000],
@@ -457,9 +504,49 @@ with tab2:
                            delta_color="inverse")
                 mb2.metric("Lotes recomendados", met_stock["lotes_recomendados"])
 
-                viabilidad_color = "success" if met_stock["prob_quiebre"] < 10 else \
-                                   "warning" if met_stock["prob_quiebre"] < 30 else "error"
-                getattr(st, viabilidad_color)(f"💡 {met_stock['recomendacion']}")
+                # ── Diagnóstico de stock ──────────────────────────────
+                st.markdown('<p class="section-label" style="margin-top:16px">¿Por qué este resultado?</p>',
+                            unsafe_allow_html=True)
+
+                pct_desperdicio = (met_stock["desperdicio_promedio"] / met_stock["total_porciones"] * 100
+                                   if met_stock["total_porciones"] > 0 else 0)
+
+                if met_stock["prob_quiebre"] > 30:
+                    st.error(
+                        f"**Causa: el stock preparado es insuficiente para la demanda esperada.** "
+                        f"Las {met_stock['total_porciones']} porciones disponibles "
+                        f"({lotes_preparados} lotes x {budines_lote} budines x {porciones_budin} porciones) "
+                        f"no alcanzan para cubrir la demanda en el {met_stock['prob_quiebre']}% de los escenarios simulados. "
+                        f"La demanda promedio fue de {met_stock['demanda_promedio']} porciones y en el peor caso "
+                        f"llego a {met_stock['demanda_maxima']}. "
+                        f"Recomendacion: preparar al menos {met_stock['lotes_recomendados']} lotes "
+                        f"({met_stock['lotes_recomendados'] * budines_lote * porciones_budin} porciones) "
+                        f"para cubrir el 90% de los escenarios."
+                    )
+                elif met_stock["prob_quiebre"] > 10:
+                    st.warning(
+                        f"**Hay riesgo moderado de quedarse sin stock.** "
+                        f"Con {met_stock['total_porciones']} porciones y una demanda promedio de "
+                        f"{met_stock['demanda_promedio']} porciones, en el {met_stock['prob_quiebre']}% de los casos "
+                        f"el stock se agota antes de atender a todos. "
+                        f"Recomendacion: agregar 1-2 lotes adicionales como margen de seguridad."
+                    )
+                elif pct_desperdicio > 30:
+                    st.info(
+                        f"**Hay stock de sobra, pero el desperdicio es elevado.** "
+                        f"En promedio {met_stock['desperdicio_promedio']:.0f} porciones ({pct_desperdicio:.0f}% del stock) "
+                        f"quedan sin consumir porque la demanda real es menor al stock preparado. "
+                        f"Con los niveles de consumo estimados ({int(pct_min*100)}-{int(pct_max*100)}%), "
+                        f"alcanzaria con preparar {met_stock['lotes_recomendados']} lotes."
+                    )
+                else:
+                    st.success(
+                        f"**El stock esta bien dimensionado.** "
+                        f"Las {met_stock['total_porciones']} porciones cubren la demanda en el "
+                        f"{100 - met_stock['prob_quiebre']:.0f}% de los escenarios, "
+                        f"con un desperdicio promedio de solo {met_stock['desperdicio_promedio']:.0f} porciones. "
+                        f"La cantidad de lotes planificada ({lotes_preparados}) es adecuada para este evento."
+                    )
 
                 fig_dem = grafico_histograma(
                     datos=df_stock["Demanda (porciones)"].tolist(),
@@ -527,45 +614,96 @@ with tab3:
 
     # Costo base de materia prima (informativo)
     costo_mp_base, desglose_mp = calcular_costo_materia_prima()
-    st.info(f"Costo base de materia prima por budín: **${costo_mp_base:,.0f} ARS** (calculado a partir de la receta y precios de referencia)")
+    st.info(
+        f"Costo de materia prima por budin: ${costo_mp_base:,.0f} ARS "
+        f"(receta y precios de referencia). "
+        f"Cada budin rinde {CAPACIDAD['porciones_por_budin']} porciones "
+        f"-> ${costo_mp_base / CAPACIDAD['porciones_por_budin']:,.0f} ARS por porcion."
+    )
 
     col_params3, col_resultados3 = st.columns([1, 2], gap="large")
 
     with col_params3:
         st.subheader("Parámetros")
 
+        st.markdown('<p class="section-label">Capacidad productiva</p>', unsafe_allow_html=True)
+
         lotes_dia = st.number_input(
             "Lotes por día", min_value=1, max_value=50,
             value=COMERCIAL["lotes_por_dia"], step=1, key="v_ld",
+            help=(
+                f"Cuántas hornadas se producen por día. "
+                f"Cada lote rinde {CAPACIDAD['budines_por_lote']} budines. "
+                f"Con un ciclo de ~{CAPACIDAD['jornada_horas']*60//119} hs por lote y jornada de "
+                f"{CAPACIDAD['jornada_horas']} hs, el máximo real es ~4 lotes/día."
+            ),
         )
         dias_mes = st.number_input(
             "Días de producción por mes", min_value=1, max_value=31,
             value=COMERCIAL["dias_produccion_mes"], step=1, key="v_dm",
+            help=(
+                "Días hábiles de producción mensual. "
+                "Para escala pequeña/evento: 1–5 días. "
+                "Para producción regular: 10–15 días. "
+                "Para producción continua: ~22 días hábiles."
+            ),
         )
+
+        st.markdown('<p class="section-label" style="margin-top:12px">Economía</p>', unsafe_allow_html=True)
+
         precio_venta = st.number_input(
-            "Precio de venta por budín ($)", min_value=500, max_value=50000,
-            value=4500, step=100, key="v_pv",
+            "Precio de venta por porción ($)", min_value=50, max_value=10000,
+            value=450, step=50, key="v_pv",
+            help=(
+                f"Precio al que se vende cada porción (tajada) del budín. "
+                f"Cada budín rinde {CAPACIDAD['porciones_por_budin']} porciones, "
+                f"por lo que el ingreso por budín = precio × {CAPACIDAD['porciones_por_budin']}. "
+                f"Ejemplo: $450/porción → $4.500 por budín completo."
+            ),
         )
         costos_fijos = st.number_input(
             "Costos fijos mensuales ($)", min_value=0, max_value=1000000,
             value=COMERCIAL["costos_fijos_mensuales"], step=5000, key="v_cf",
+            help=(
+                "Gastos que se pagan siempre, independientemente de cuánto se produzca: "
+                "alquiler, servicios, amortización de equipos, habilitaciones, etc. "
+                "Se reparten entre todos los budines vendidos en el mes."
+            ),
         )
         costo_mo = st.number_input(
-            "Costo mano de obra ($/hora)", min_value=0, max_value=50000,
-            value=COMERCIAL["costo_mano_obra_hora"], step=100, key="v_mo",
+            "Costo de mano de obra por budín ($)", min_value=0, max_value=50000,
+            value=COMERCIAL["costo_mano_obra_budin"], step=50, key="v_mo",
+            help=(
+                "Cuánto cuesta en mano de obra producir 1 budín. "
+                "Incluye el tiempo de todos los operarios del equipo. "
+                "Ejemplo: si el equipo cobra ARS 20.000 por día y produce 40 budines, "
+                "el costo por budín es ARS 500."
+            ),
         )
+
+        st.markdown('<p class="section-label" style="margin-top:12px">Incertidumbre Monte Carlo</p>', unsafe_allow_html=True)
+
         margen_var = st.slider(
             "Variación de costos ±%", min_value=0, max_value=50,
             value=15, step=1, key="v_mv",
+            help="Porcentaje de variación aleatoria de los costos de materia prima en cada iteración, simulando fluctuaciones de precios de mercado.",
         )
         aceptacion = st.slider(
             "Aceptación sensorial esperada (%)", min_value=10, max_value=100,
             value=65, step=5, key="v_as",
+            help=(
+                "Porcentaje de budines producidos que encontrará comprador. "
+                "65% = de cada 10 budines producidos, se venden ~6-7. "
+                "El resto no se vende (desperdicio o devolucion). "
+                "Este parámetro reduce tanto los ingresos como los costos variables."
+            ),
         )
+
         iteraciones_v = st.select_slider(
             "Iteraciones Monte Carlo",
             options=[100, 500, 1000, 5000, 10000],
             value=1000, key="iter_v",
+            help="Cantidad de escenarios aleatorios que el modelo simula para estimar la distribución de resultados.",
         )
 
         ejecutar_viab = st.button("▶ Simular viabilidad", use_container_width=True, type="primary")
@@ -586,10 +724,11 @@ with tab3:
                 params3 = dict(
                     lotes_por_dia=lotes_dia,
                     budines_por_lote=CAPACIDAD["budines_por_lote"],
+                    porciones_por_budin=CAPACIDAD["porciones_por_budin"],
                     dias_produccion_mes=dias_mes,
                     precio_venta=float(precio_venta),
                     costos_fijos_mensuales=float(costos_fijos),
-                    costo_mano_obra_hora=float(costo_mo),
+                    costo_mano_obra_budin=float(costo_mo),
                     margen_variacion_costos_pct=float(margen_var),
                     aceptacion_sensorial_pct=float(aceptacion),
                     iteraciones=iteraciones_v,
@@ -611,7 +750,62 @@ with tab3:
                            delta_color="normal" if ganancia_prom >= 0 else "inverse")
                 mb2.metric("Punto de equilibrio", f"{met_viab['punto_equilibrio_promedio']:,.0f} uds")
 
-                st.info(f"💡 {met_viab['recomendacion']}")
+                # ── Desglose de costos por budín ──────────────────────────
+                st.caption(
+                    f"**Costo por budín:** "
+                    f"ARS {met_viab['costo_mp_base']:,.0f} materias primas "
+                    f"+ ARS {met_viab['costo_mo_por_budin']:,.0f} mano de obra "
+                    f"= **ARS {met_viab['costo_total_budin']:,.0f}/budín** "
+                    f"→ **ARS {met_viab['costo_total_porcion']:,.0f}/porción**"
+                )
+
+                # ── Diagnóstico: por qué este resultado ──────────────────
+                st.markdown('<p class="section-label" style="margin-top:16px">¿Por qué este resultado?</p>',
+                            unsafe_allow_html=True)
+
+                ppp = CAPACIDAD["porciones_por_budin"]
+                costo_por_porcion = met_viab["costo_total_porcion"]
+                margen_por_porcion = precio_venta - costo_por_porcion
+                margen_por_budin = margen_por_porcion * ppp
+                budines_vendidos_mes = int(met_viab["budines_por_mes"] * aceptacion / 100)
+
+                if margen_por_porcion <= 0:
+                    st.error(
+                        f"**Causa: el costo por porcion supera el precio de venta por porcion.** "
+                        f"Producir 1 budin cuesta ARS {met_viab['costo_total_budin']:,.0f} "
+                        f"(ARS {met_viab['costo_mp_base']:,.0f} materias primas + "
+                        f"ARS {met_viab['costo_mo_por_budin']:,.0f} mano de obra). "
+                        f"Dividido en {ppp} porciones: ARS {costo_por_porcion:,.0f} por porcion. "
+                        f"El precio de venta es ARS {precio_venta:,} por porcion. "
+                        f"Cada porcion vendida genera una perdida de ARS {abs(margen_por_porcion):,.0f}. "
+                        f"El precio debe superar ARS {costo_por_porcion:,.0f} por porcion para ser viable."
+                    )
+                else:
+                    pe_budines = int(costos_fijos / margen_por_budin) + 1 if margen_por_budin > 0 else 0
+                    if budines_vendidos_mes < pe_budines:
+                        st.warning(
+                            f"**Causa: el volumen vendido no alcanza el punto de equilibrio.** "
+                            f"El margen por porcion es ARS {margen_por_porcion:,.0f} "
+                            f"(ARS {precio_venta:,} precio - ARS {costo_por_porcion:,.0f} costo). "
+                            f"Por budin completo ({ppp} porciones): ARS {margen_por_budin:,.0f} de margen. "
+                            f"Para cubrir costos fijos de ARS {costos_fijos:,.0f}/mes "
+                            f"se necesitan vender **{pe_budines} budines/mes**. "
+                            f"Con {met_viab['budines_por_mes']} budines producidos y {aceptacion}% de aceptacion "
+                            f"se venden solo **{budines_vendidos_mes}** "
+                            f"(faltan {pe_budines - budines_vendidos_mes} budines para el equilibrio). "
+                            f"Aumentar dias de produccion, precio por porcion o aceptacion sensorial mejoraria el resultado."
+                        )
+                    else:
+                        st.success(
+                            f"**El producto es rentable en estas condiciones.** "
+                            f"Margen de ARS {margen_por_porcion:,.0f} por porcion "
+                            f"(ARS {margen_por_budin:,.0f} por budin completo). "
+                            f"Se venden {budines_vendidos_mes} budines/mes. "
+                            f"Los costos fijos se cubren con {pe_budines} budines "
+                            f"y los {budines_vendidos_mes - pe_budines} restantes son ganancia neta."
+                        )
+
+                st.info(f"Recomendacion: {met_viab['recomendacion']}")
 
                 # Histograma de ganancia
                 fig_gan = grafico_histograma(
@@ -627,7 +821,7 @@ with tab3:
                 max_uds = int(met_viab["budines_por_mes"] * 1.5) or 1000
                 uds_range = list(range(0, max_uds, max(1, max_uds // 100)))
                 costo_total_unit = met_viab["costo_total_budin"]
-                ingresos_range = [u * precio_venta for u in uds_range]
+                ingresos_range = [u * precio_venta * CAPACIDAD["porciones_por_budin"] for u in uds_range]
                 costos_range = [u * costo_total_unit + costos_fijos for u in uds_range]
                 pe_val = met_viab["punto_equilibrio_promedio"]
 
@@ -665,14 +859,16 @@ with tab3:
         for clave, esc in escenarios3.items():
             p = {k: v for k, v in esc.items() if k not in ("nombre", "descripcion")}
             p["budines_por_lote"] = CAPACIDAD["budines_por_lote"]
+            p["porciones_por_budin"] = CAPACIDAD["porciones_por_budin"]
             p["dias_produccion_mes"] = COMERCIAL["dias_produccion_mes"]
-            p["costo_mano_obra_hora"] = COMERCIAL["costo_mano_obra_hora"]
+            p["costo_mano_obra_budin"] = COMERCIAL["costo_mano_obra_budin"]
             _, m = simular_viabilidad(**p)
             nombres3.append(esc["nombre"])
             budines_mes = m["budines_por_mes"]
-            precio_esc = esc["precio_venta"]
-            ingreso_prom = budines_mes * precio_esc * (esc["aceptacion_sensorial_pct"] / 100)
-            costo_var = budines_mes * m["costo_total_budin"]
+            budines_vendidos = budines_mes * esc["aceptacion_sensorial_pct"] / 100
+            # ingreso = porciones vendidas × precio por porción
+            ingreso_prom = budines_vendidos * CAPACIDAD["porciones_por_budin"] * esc["precio_venta"]
+            costo_var = budines_vendidos * m["costo_total_budin"]
             ingresos_esc.append(round(ingreso_prom))
             costos_esc.append(round(costo_var + esc["costos_fijos_mensuales"]))
             ganancias_esc.append(round(m["ganancia_promedio"]))
