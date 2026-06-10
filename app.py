@@ -1,17 +1,19 @@
 import streamlit as st
 import pandas as pd
+import time
 
 from datos.parametros import EVENTO, CAPACIDAD, COMERCIAL, TIEMPOS, RECETA
-from simuladores.flujo_personas import simular_flujo, escenarios_flujo
-from simuladores.stock_porciones import simular_stock, escenarios_stock
+from simuladores.flujo_personas import simular_flujo
+from simuladores.stock_porciones import simular_stock
 from simuladores.viabilidad import simular_viabilidad, escenarios_viabilidad, calcular_costo_materia_prima
+from simuladores.linea_produccion import simular_linea_produccion, estado_en_tiempo
 from utils.verificacion import verificar_tiempos, verificar_positivo, mostrar_errores
 from utils.graficos import (
     grafico_histograma,
-    grafico_barras,
     grafico_escenarios,
     grafico_punto_equilibrio,
     grafico_flujo_produccion,
+    grafico_gantt_produccion,
     COLORES,
 )
 from utils.informe import generar_informe
@@ -20,7 +22,7 @@ from utils.informe import generar_informe
 # CONFIGURACIÓN DE PÁGINA
 # ─────────────────────────────────────────
 st.set_page_config(
-    page_title="Budín Nutritivo — Simulador",
+    page_title="Nutridin — Simulador",
     page_icon="🍞",
     layout="wide",
 )
@@ -174,8 +176,8 @@ hr { border-color: #E2D3C0; }
 col_titulo, col_badges = st.columns([3, 2])
 with col_titulo:
     st.markdown('<p class="section-label">Simulador de Producción Alimentaria</p>', unsafe_allow_html=True)
-    st.title("🍞 Budín Nutritivo")
-    st.caption("Universidad de la Cuenca del Plata · ISI 4to Año · Modelos y Simulación · Grupo 3 · 2026")
+    st.title("🍞 Nutridin")
+    st.caption("Universidad de la Cuenca del Plata · ISI 4to Año · LN · Modelos y Simulación · Tecnología, Ciencia y Responsabilidad Social · Grupo 3 · 2026")
 with col_badges:
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown(
@@ -201,6 +203,12 @@ if "params_stock" not in st.session_state:
     st.session_state["params_stock"] = None
 if "params_viabilidad" not in st.session_state:
     st.session_state["params_viabilidad"] = None
+if "linea_t" not in st.session_state:
+    st.session_state["linea_t"] = 0
+if "linea_playing" not in st.session_state:
+    st.session_state["linea_playing"] = False
+if "df_linea" not in st.session_state:
+    st.session_state["df_linea"] = None
 
 # ─────────────────────────────────────────
 # TABS
@@ -383,35 +391,6 @@ with tab1:
         elif st.session_state["metricas_flujo"] is None:
             st.info("Configurá los parámetros y presioná **▶ Simular flujo**.")
 
-    # Comparación de escenarios
-    st.divider()
-    st.subheader("Comparación de Escenarios")
-    if st.button("▶ Comparar los 3 escenarios", key="cmp_flujo"):
-        escenarios = escenarios_flujo()
-        nombres, sat_pct, espera_prom, dur_evento = [], [], [], []
-
-        for clave, esc in escenarios.items():
-            p = {k: v for k, v in esc.items() if k not in ("nombre", "descripcion")}
-            _, m = simular_flujo(**p)
-            nombres.append(esc["nombre"])
-            sat_pct.append(m["pct_saturacion"])
-            espera_prom.append(m["espera_promedio"])
-            dur_evento.append(m["tiempo_total_evento"])
-
-        fig_sat = grafico_barras(
-            categorias=nombres, valores=sat_pct,
-            titulo="% Saturación por escenario",
-            etiqueta_y="% comensales con espera",
-            colores=[COLORES["optimista"], COLORES["esperado"], COLORES["pesimista"]],
-        )
-        fig_dur = grafico_barras(
-            categorias=nombres, valores=dur_evento,
-            titulo="Duración total del evento (min)",
-            etiqueta_y="Minutos",
-            colores=[COLORES["optimista"], COLORES["esperado"], COLORES["pesimista"]],
-        )
-        st.plotly_chart(fig_sat, use_container_width=True)
-        st.plotly_chart(fig_dur, use_container_width=True)
 
 
 # ═════════════════════════════════════════
@@ -571,37 +550,6 @@ with tab2:
         elif st.session_state["metricas_stock"] is None:
             st.info("Configurá los parámetros y presioná **▶ Simular stock**.")
 
-    # Comparación de escenarios
-    st.divider()
-    st.subheader("Comparación de Escenarios")
-    if st.button("▶ Comparar los 3 escenarios", key="cmp_stock"):
-        escenarios2 = escenarios_stock()
-        nombres2, prob_q, desp_prom, por_rec = [], [], [], []
-
-        for clave, esc in escenarios2.items():
-            p = {k: v for k, v in esc.items() if k not in ("nombre", "descripcion")}
-            p["budines_por_lote"] = CAPACIDAD["budines_por_lote"]
-            p["porciones_por_budin"] = CAPACIDAD["porciones_por_budin"]
-            _, m = simular_stock(**p)
-            nombres2.append(esc["nombre"])
-            prob_q.append(m["prob_quiebre"])
-            desp_prom.append(m["desperdicio_promedio"])
-            por_rec.append(m["porciones_recomendadas"])
-
-        fig_pq = grafico_barras(
-            categorias=nombres2, valores=prob_q,
-            titulo="Probabilidad de quiebre por escenario (%)",
-            etiqueta_y="%",
-            colores=[COLORES["optimista"], COLORES["esperado"], COLORES["pesimista"]],
-        )
-        fig_dp = grafico_barras(
-            categorias=nombres2, valores=desp_prom,
-            titulo="Desperdicio promedio por escenario (porciones)",
-            etiqueta_y="Porciones",
-            colores=[COLORES["optimista"], COLORES["esperado"], COLORES["pesimista"]],
-        )
-        st.plotly_chart(fig_pq, use_container_width=True)
-        st.plotly_chart(fig_dp, use_container_width=True)
 
 
 # ═════════════════════════════════════════
@@ -895,7 +843,7 @@ with tab3:
 # TAB 4 — LÍNEA DE PRODUCCIÓN
 # ═════════════════════════════════════════
 with tab4:
-    st.markdown('<p class="section-label">Proceso Productivo · Budín Nutritivo</p>', unsafe_allow_html=True)
+    st.markdown('<p class="section-label">Proceso Productivo · Nutridin</p>', unsafe_allow_html=True)
     st.header("Línea de Producción")
     st.markdown("Visualización del flujo productivo: etapas del proceso, tiempos y capacidad por jornada.")
 
@@ -993,6 +941,219 @@ with tab4:
         mc1.metric("Tiempo de ciclo", f"{tiempo_ciclo:.0f} min")
         mc2.metric("Lotes / jornada", lotes_por_jornada)
         mc3.metric("Budines / jornada", lotes_por_jornada * CAPACIDAD["budines_por_lote"])
+
+    # ── Simulación interactiva de la línea ───────────────────────────────────
+    st.divider()
+    st.markdown('<p class="section-label">Simulación de la línea de producción</p>', unsafe_allow_html=True)
+    st.markdown(
+        "Configurá los recursos disponibles y la cantidad de lotes. "
+        "La simulación muestra cuándo entra y sale cada lote de cada etapa, "
+        "dónde se forma la cola y cuánto tarda en total la jornada."
+    )
+
+    sim_col_params, sim_col_results = st.columns([1, 2], gap="large")
+
+    with sim_col_params:
+        lotes_sim = st.number_input(
+            "Lotes a producir", min_value=1, max_value=20, value=4, step=1,
+            help="Cantidad de lotes (hornadas) que se quieren simular en la jornada.",
+        )
+        hornos_sim = st.number_input(
+            "Hornos disponibles", min_value=1, max_value=4,
+            value=CAPACIDAD["hornos_disponibles"], step=1,
+            help="Cada horno puede hornear un lote a la vez. Con 2 hornos, 2 lotes se hornean en paralelo.",
+        )
+        operarios_sim = st.number_input(
+            "Operarios", min_value=1, max_value=6,
+            value=CAPACIDAD["operarios"], step=1,
+            help="Controla cuántos lotes pueden arrancar la preparación en paralelo.",
+        )
+        ejecutar_linea = st.button("▶ Simular línea", use_container_width=True, type="primary")
+
+    with sim_col_results:
+        if ejecutar_linea:
+            with st.spinner("Simulando..."):
+                df_linea, met_linea = simular_linea_produccion(
+                    lotes_a_producir=int(lotes_sim),
+                    hornos_disponibles=int(hornos_sim),
+                    operarios=int(operarios_sim),
+                )
+
+            # Métricas principales
+            sl1, sl2, sl3, sl4 = st.columns(4)
+            sl1.metric("Tiempo total", f"{met_linea['makespan_min']} min")
+            sl2.metric("Budines producidos", met_linea["budines_producidos"])
+            sl3.metric("Porciones", met_linea["porciones_producidas"])
+            sl4.metric("Throughput", f"{met_linea['throughput_lotes_hora']} lotes/hr")
+
+            sl5, sl6 = st.columns(2)
+            sl5.metric("Utilización del horno", f"{met_linea['utilizacion_horno_pct']}%")
+            sl6.metric("Espera prom. en horno", f"{met_linea['espera_prom_horno_min']} min")
+
+            # Diagnóstico
+            espera = met_linea["espera_prom_horno_min"]
+            util = met_linea["utilizacion_horno_pct"]
+            if espera > 15:
+                st.warning(
+                    f"**Cuello de botella en Horneado.** "
+                    f"Los lotes esperan en promedio {espera} min para entrar al horno "
+                    f"(utilización: {util}%). "
+                    f"Agregar un segundo horno reduciría esa espera significativamente."
+                )
+            elif espera > 0:
+                st.info(
+                    f"**Pequeña cola en Horneado** ({espera} min de espera promedio). "
+                    f"La línea funciona bien con los recursos configurados."
+                )
+            else:
+                st.success(
+                    f"**Sin colas.** El horno nunca queda bloqueado con esta configuración. "
+                    f"Utilización del horno: {util}%."
+                )
+
+            # ── Visualización interactiva de la línea ──────────────────────
+            st.markdown('<p class="section-label" style="margin-top:16px">Recorrido del budín en la línea</p>', unsafe_allow_html=True)
+            st.session_state["df_linea"] = df_linea
+            st.session_state["linea_t"] = 0
+            st.session_state["linea_playing"] = False
+
+        if st.session_state["df_linea"] is not None:
+            df_linea = st.session_state["df_linea"]
+            makespan_linea = int(df_linea["Fin"].max())
+
+            # Avanzar tiempo ANTES de renderizar el slider (Streamlit no permite
+            # modificar session_state de un widget después de que fue renderizado)
+            if st.session_state["linea_playing"]:
+                vel_pre = st.session_state.get("linea_vel", 10)
+                t_pre = st.session_state.get("t_linea_slider", 0)
+                nuevo_t = min(t_pre + vel_pre, makespan_linea)
+                st.session_state["t_linea_slider"] = nuevo_t
+                if nuevo_t >= makespan_linea:
+                    st.session_state["linea_playing"] = False
+
+            # Controles de reproducción
+            ctrl1, ctrl2, ctrl3 = st.columns([1, 1, 2])
+            with ctrl1:
+                if st.button("▶ Play", use_container_width=True, key="btn_play"):
+                    if st.session_state.get("t_linea_slider", 0) >= makespan_linea:
+                        st.session_state["t_linea_slider"] = 0
+                    st.session_state["linea_playing"] = True
+            with ctrl2:
+                if st.button("⏸ Pausa", use_container_width=True, key="btn_pause"):
+                    st.session_state["linea_playing"] = False
+            with ctrl3:
+                st.select_slider(
+                    "Velocidad", options=[5, 10, 20, 30],
+                    value=10, key="linea_vel",
+                    format_func=lambda x: f"×{x//5} ({x} min/tick)",
+                )
+
+            t_actual = st.slider(
+                "Tiempo actual (min)",
+                min_value=0, max_value=makespan_linea,
+                step=1, key="t_linea_slider",
+            )
+
+            estado = estado_en_tiempo(df_linea, t_actual)
+
+            ETAPAS_VIS = [
+                ("Preparación",      "🔪", "#3498DB"),
+                ("Cocción lentejas", "🫕", "#E67E22"),
+                ("Mezclado",         "🥣", "#2ECC71"),
+                ("Horneado",         "🔥", "#E74C3C"),
+                ("Enfriado",         "❄️", "#9B59B6"),
+                ("Envasado",         "📦", "#1ABC9C"),
+            ]
+
+            def badge(num, color):
+                return (
+                    f'<span style="display:inline-flex;align-items:center;justify-content:center;'
+                    f'width:32px;height:32px;border-radius:50%;background:{color};'
+                    f'color:white;font-weight:bold;font-size:13px;margin:2px;">'
+                    f'L{num}</span>'
+                )
+
+            def stage_card(nombre, icono, color, lotes_dentro, es_horno=False):
+                badges_html = "".join(badge(n, color) for n in lotes_dentro) if lotes_dentro else (
+                    f'<span style="color:#bbb;font-size:11px;">vacío</span>'
+                )
+                border_width = "3px" if es_horno else "2px"
+                extra_style = (
+                    f"box-shadow:0 0 12px {color}88;transform:scale(1.05);" if es_horno else ""
+                )
+                return (
+                    f'<div style="min-width:100px;max-width:130px;flex:1;background:{color}18;'
+                    f'border:{border_width} solid {color};border-radius:10px;padding:10px 8px;'
+                    f'text-align:center;{extra_style}">'
+                    f'<div style="font-size:{"28px" if es_horno else "22px"};line-height:1;">{icono}</div>'
+                    f'<div style="font-size:10px;font-weight:700;color:{color};margin:4px 0 6px;">'
+                    f'{"🔴 HORNO" if es_horno else nombre.upper()}</div>'
+                    f'{badges_html}'
+                    f'</div>'
+                )
+
+            # Fila principal de etapas
+            cards_html = ""
+            for i, (nombre, icono, color) in enumerate(ETAPAS_VIS):
+                lotes_aqui = estado.get(nombre, [])
+                es_horno = nombre == "Horneado"
+                cards_html += stage_card(nombre, icono, color, lotes_aqui, es_horno)
+                if i < len(ETAPAS_VIS) - 1:
+                    cards_html += (
+                        '<div style="display:flex;align-items:center;color:#C9952A;'
+                        'font-size:20px;font-weight:bold;padding:0 2px;">→</div>'
+                    )
+
+            # Cola del horno
+            cola = estado.get("Cola horneado", [])
+            cola_html = ""
+            if cola:
+                cola_badges = "".join(badge(n, "#E74C3C") for n in cola)
+                cola_html = (
+                    f'<div style="margin-top:8px;padding:6px 10px;background:#E74C3C18;'
+                    f'border:1px dashed #E74C3C;border-radius:8px;font-size:12px;">'
+                    f'⏳ <b>Cola para el horno:</b> {cola_badges}</div>'
+                )
+
+            # No iniciados y completados
+            no_ini = estado.get("No iniciado", [])
+            compl = estado.get("Completado", [])
+            estado_extra = ""
+            if no_ini:
+                badges_ni = "".join(badge(n, "#95A5A6") for n in no_ini)
+                estado_extra += (
+                    f'<div style="margin-top:6px;font-size:12px;color:#666;">'
+                    f'⏸ <b>En espera:</b> {badges_ni}</div>'
+                )
+            if compl:
+                badges_c = "".join(badge(n, "#27AE60") for n in compl)
+                estado_extra += (
+                    f'<div style="margin-top:6px;font-size:12px;color:#27AE60;">'
+                    f'✅ <b>Completados:</b> {badges_c}</div>'
+                )
+
+            st.markdown(
+                f'<div style="overflow-x:auto;padding-bottom:4px;">'
+                f'<div style="display:flex;gap:6px;align-items:stretch;min-width:600px;">'
+                f'{cards_html}</div></div>'
+                f'{cola_html}{estado_extra}',
+                unsafe_allow_html=True,
+            )
+
+            with st.expander("Ver diagrama de Gantt y tabla detallada"):
+                st.plotly_chart(grafico_gantt_produccion(df_linea), use_container_width=True)
+                st.dataframe(
+                    df_linea[["Lote", "Etapa", "Inicio", "Fin", "Duración", "Espera horno (min)"]],
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+            # Autoplay: el tiempo ya fue avanzado antes del slider; solo dormimos y rerun
+            if st.session_state["linea_playing"]:
+                time.sleep(0.4)
+                st.rerun()
+        else:
+            st.info("Configurá los recursos y presioná **▶ Simular línea** para ver el Gantt.")
 
 
 # ─────────────────────────────────────────
