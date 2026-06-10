@@ -382,7 +382,7 @@ with tab1:
                     etiqueta_x="Minutos",
                     color=COLORES["secundario"],
                 )
-                st.plotly_chart(fig_deg, use_container_width=True)
+                st.plotly_chart(fig_deg, use_container_width=True)  # noqa: deprecated — kept for cloud compat
                 st.plotly_chart(fig_form, use_container_width=True)
 
                 with st.expander("Ver tabla de eventos"):
